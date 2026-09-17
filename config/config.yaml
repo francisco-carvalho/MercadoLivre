@@ -1,0 +1,28 @@
+api:
+  base_url: "https://api.mercadolibre.com"
+
+endpoints:
+  product_search: "/products/search"
+  product_items: "/products/{product_id}/items"
+  currencies: "/currencies"
+  currency_conversions: "/currency_conversions"
+
+search:
+  site_id: "MLA"
+  query: "Samsung Galaxy S24"
+  product_name_filter: "Samsung Galaxy S24"
+  page_size: 50
+  max_pages: 3
+## The Products Search API limits the maximum offset to 100, so extraction is limited to the first 150 catalog results
+
+
+filters:
+  condition: "new"
+
+database:
+  schema: "public"
+
+
+currency_conversion:
+  from: "ARS"
+  to: "USD"

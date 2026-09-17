@@ -1,0 +1,445 @@
+# Mercado Livre ETL — Technical Challenge
+
+## 1. Objective
+
+This project implements an automated ETL pipeline using Python to extract data from Mercado Libre's public APIs, transform and validate the data, and load it into a PostgreSQL database.
+
+The analysis focuses on **new Samsung Galaxy S24 listings in Mercado Libre Argentina (MLA)** and addresses the business questions defined in the technical challenge.
+
+The pipeline was designed to be configurable, reproducible, and extensible.
+
+---
+
+## 2. Architecture
+
+The solution follows a traditional ETL architecture:
+
+```text
+Mercado Livre APIs
+       |
+       v
+    Extract
+       |
+       v
+   Transform
+       |
+       v
+      Load
+       |
+       v
+   PostgreSQL
+       |
+       v
+   SQL Analysis
+```
+
+### Extract
+
+Data is retrieved from Mercado Livre APIs for:
+
+* Product search
+* Product listings
+* Currency conversion
+
+API requests use pagination with a configurable page size of 50 records.
+
+### Transform
+
+The extracted data is:
+
+* Filtered to new products
+* Structured into the required analytical fields
+* Enriched with currency conversion information
+* Associated with a unique `JOB_RUN` timestamp
+
+### Load
+
+The transformed data is stored in PostgreSQL.
+
+The database schema is defined in:
+
+```text
+sql/ddl.sql
+```
+
+### Analysis
+
+Business questions are answered using SQL queries stored in:
+
+```text
+sql/analysis.sql
+```
+
+---
+
+## 3. Project Structure
+
+```text
+MercadoLivre/
+├── src/
+│   ├── __init__.py
+│   ├── auth.py
+│   ├── extract.py
+│   ├── transform.py
+│   ├── load.py
+│   └── main.py
+├── config/
+│   └── config.yaml
+├── sql/
+│   ├── ddl.sql
+│   └── analysis.sql
+├── .env
+├── .gitignore
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## 4. Technologies
+
+* Python
+* PostgreSQL
+* SQL
+* Mercado Livre APIs
+* Requests
+* PyYAML
+* psycopg2
+* python-dotenv
+
+---
+
+## 5. Configuration
+
+Pipeline parameters are stored in:
+
+```text
+config/config.yaml
+```
+
+The configuration includes:
+
+* API base URL
+* API endpoints
+* Mercado Livre site
+* Product search term
+* Pagination size
+* Maximum number of pages
+* Product condition
+* Currency conversion parameters
+* Database schema
+
+Example:
+
+```yaml
+search:
+  site_id: "MLA"
+  query: "Samsung Galaxy S24"
+  page_size: 50
+  max_pages: 3
+
+filters:
+  condition: "new"
+
+currency_conversion:
+  from: "ARS"
+  to: "USD"
+```
+
+Sensitive database credentials are not stored in the source code. They are provided through environment variables.
+
+Example:
+
+```text
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=mercado_livre
+DB_USER=postgres
+DB_PASSWORD=<your_password>
+```
+
+The `.env` file is excluded from version control.
+
+---
+
+## 6. Installation and Execution
+
+### 6.1 Create a virtual environment
+
+```bash
+python -m venv venv
+```
+
+Activate it:
+
+**Windows:**
+
+```bash
+venv\Scripts\activate
+```
+
+### 6.2 Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 6.3 Configure environment variables
+
+Create a `.env` file in the project root with the required PostgreSQL credentials.
+
+### 6.4 Create the database tables
+
+Run:
+
+```text
+sql/ddl.sql
+```
+
+against the PostgreSQL database.
+
+### 6.5 Run the ETL
+
+From the project root:
+
+```bash
+python -m src.main
+```
+
+The pipeline extracts the data, applies the transformations, and loads the results into PostgreSQL.
+
+---
+
+## 7. Data Model
+
+### `mercado_livre_items`
+
+| Field           | Type          | Description                      |
+| --------------- | ------------- | -------------------------------- |
+| `item_id`       | VARCHAR(50)   | Mercado Livre listing identifier |
+| `seller_id`     | BIGINT        | Seller identifier                |
+| `price`         | NUMERIC(18,2) | Listing price                    |
+| `currency_id`   | VARCHAR(10)   | Price currency                   |
+| `warranty`      | TEXT          | Warranty information             |
+| `condition`     | VARCHAR(20)   | Product condition                |
+| `shipping_mode` | VARCHAR(50)   | Shipping mode                    |
+| `logistic_type` | VARCHAR(50)   | Logistics type                   |
+| `free_shipping` | BOOLEAN       | Whether shipping is free         |
+| `job_run`       | TIMESTAMP     | ETL execution timestamp          |
+
+Primary key:
+
+```text
+(item_id, job_run)
+```
+
+### `currency_conversions`
+
+| Field           | Type          | Description             |
+| --------------- | ------------- | ----------------------- |
+| `from_currency` | VARCHAR(10)   | Source currency         |
+| `to_currency`   | VARCHAR(10)   | Target currency         |
+| `rate`          | NUMERIC(18,8) | Conversion rate         |
+| `creation_date` | TIMESTAMP     | Rate creation timestamp |
+| `valid_until`   | TIMESTAMP     | Rate validity timestamp |
+| `job_run`       | TIMESTAMP     | ETL execution timestamp |
+
+The same `JOB_RUN` value is assigned to all records generated by a single ETL execution.
+
+This allows each execution to be treated as a separate data snapshot.
+
+---
+
+## 8. Business Questions and Results
+
+The SQL queries used to answer the questions are available in:
+
+```text
+sql/analysis.sql
+```
+
+All analytical queries use the latest `JOB_RUN` to ensure that results are calculated from a single ETL snapshot.
+
+### 8.1 Are there sellers with multiple listings?
+
+Yes.
+
+The analysis identified sellers with more than one listing in the latest ETL snapshot.
+
+**Result:**
+
+* Seller_id: `'223440248'`
+* Listings: `3`
+
+---
+
+### 8.2 What is the average number of sales per seller?
+
+The Mercado Livre API documentation confirms that `sold_quantity` is an attribute of an item. However, the documentation also states that this field is only available when the request is made with a token belonging to the owner of the listing.
+
+The listings extracted for this challenge did not return `sold_quantity` with the available authentication context.
+
+Therefore, the requested metric could not be calculated from the extracted data.
+
+The metric was not replaced with another measure in order to preserve the original business definition of the question.
+
+---
+
+### 8.3 What is the average price in USD?
+
+The analysis includes two calculations:
+
+1. **Raw average price**, using all extracted listings.
+2. **Average price excluding statistical outliers**, using the IQR method.
+
+An extreme price value was identified in the extracted dataset and significantly affected the raw average.
+
+The original value was retained in the database. The outlier treatment was applied only to the analytical calculation.
+
+**Average price excluding outliers: approximately US$1,200.**
+
+The IQR method identifies observations outside:
+
+```text
+Q1 - 1.5 × IQR
+Q3 + 1.5 × IQR
+```
+
+**Result:**
+
+* Raw average price: `$42,482.61`
+* Average price without outlier: `$1,266.79`
+
+---
+
+### 8.4 What percentage of items have a warranty?
+
+**Result: `87.5%`**
+
+The calculation considers listings with a warranty description as covered and listings explicitly marked as having no warranty as not covered.
+
+---
+
+### 8.5 What shipping methods are offered?
+
+The analysis groups listings by:
+
+* `shipping_mode`
+* `logistic_type`
+
+The resulting combinations and number of listings are available in `sql/analysis.sql`.
+
+**Result:**
+
+| Shipping mode | Logistic type |  Listings |
+| ------------- | ------------- | --------: |
+| `me2`         | `drop_off`    | `10`      |
+| `me2`         | `xd_drop_off` | `6`       |
+
+---
+
+## 9. Technical Decisions and Challenges
+
+### 9.1 API endpoint availability
+
+During the development of the extraction layer, different Mercado Livre search endpoints were tested.
+
+The `/sites/MLA/search` endpoint consistently returned HTTP `403 Forbidden` with the authentication credentials available for the project.
+
+The extraction strategy was therefore adapted to use the available product search endpoints.
+
+This was treated as an API access constraint rather than being hidden from the implementation.
+
+### 9.2 Pagination limitation
+
+The challenge requires API pagination using a page size of 50 records.
+
+During testing of `/products/search`, requests using offsets beyond 100 returned an API validation error indicating that the maximum allowed offset was 100.
+
+This restriction was observed directly from the API response. It was not treated as a documented API rule because the documentation consulted did not explicitly state this offset limitation.
+
+The extraction therefore uses a configurable maximum number of pages while respecting the observed API behavior.
+
+### 9.3 `sold_quantity` availability
+
+The Mercado Livre documentation shows `sold_quantity` as part of the item response, but indicates that it is only available with a token belonging to the listing owner.
+
+Because the challenge relies on public listing data and the available authentication context did not provide this field, the pipeline does not fabricate or infer sales information.
+
+The limitation is documented in the analysis instead.
+
+### 9.4 Configurable parameters
+
+API URLs, endpoints, search parameters, pagination settings, filters, and currency conversion parameters are kept outside the Python source code.
+
+This makes the pipeline easier to adapt to different products or execution parameters without changing the application logic.
+
+### 9.5 JOB_RUN
+
+A single `JOB_RUN` timestamp is generated at the beginning of each ETL execution.
+
+The same value is propagated through the transformation and loading process.
+
+This makes it possible to identify and analyze each execution as an independent snapshot.
+
+### 9.6 Currency conversion
+
+Prices may be returned in different currencies.
+
+The Mercado Livre currency conversion endpoint is used to obtain the ARS/USD conversion rate, allowing prices to be analyzed in USD.
+
+### 9.7 Outlier treatment
+
+An extreme price value was identified during the analysis.
+
+Instead of modifying or deleting the source data, the original value was preserved in PostgreSQL and the outlier treatment was applied only to the analytical query.
+
+This preserves data traceability while preventing the extreme observation from dominating the average price metric.
+
+---
+
+## 10. Limitations
+
+* The public listing data available with the authentication context used in the challenge did not provide `sold_quantity`.
+* The `/products/search` endpoint presented an observed maximum offset of 100 during testing.
+* The extraction is limited by the API pagination behavior and the configurable maximum number of pages.
+* The current implementation focuses on Samsung Galaxy S24 products in Mercado Livre Argentina.
+* The current database implementation uses PostgreSQL locally.
+
+---
+
+## 11. Possible Improvements
+
+Future improvements could include:
+
+* Incremental loading and change detection
+* Automated data quality checks
+* Retry and backoff strategies for API failures
+* Additional product and seller attributes
+* Automated pipeline scheduling
+* Centralized logging and monitoring
+* Cloud database deployment
+* Automated tests for extraction, transformation, and loading
+* Data visualization through a BI tool
+
+---
+
+## 12. SQL Analysis
+
+The queries used to answer the business questions are available in:
+
+```text
+sql/analysis.sql
+```
+
+The SQL analysis includes:
+
+* Seller listing counts
+* Average sales analysis and documented API limitation
+* Average price in USD
+* Outlier-adjusted average price using IQR
+* Warranty percentage
+* Shipping methods
+
+All queries are designed to use the latest `JOB_RUN` so that previous ETL executions do not affect the current analysis.
+
